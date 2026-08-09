@@ -4,9 +4,9 @@ from torch import Tensor
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
-from config import images_path
-from PIL import Image
-import os
+import torch, os
+import torchvision.transforms.v2 as v2
+import torchvision.transforms.v2.functional as F
 
 
 def multi_hot(tags: list, tag_names: list):
@@ -68,17 +68,38 @@ def confusion_matrix(preds, labels: np.ndarray, tag_names):
     }).sort_values('f1', ascending=False)
 
 
-def visualize(X: Tensor, y: Tensor, preds: np.ndarray, tag_names, width=2):
-    X = X.permute(0, 2, 3, 1)
+class SquarePad:
+	def __call__(self, image):
+		_, h, w = image.shape
+		max_wh = np.max([w, h])
+		hp = int((max_wh - w) / 2)
+		vp = int((max_wh - h) / 2)
+		return F.pad(image, (hp, vp))
+
+pad = v2.Compose([SquarePad(), v2.Resize((224, 224))])
+rand_crop = v2.RandomResizedCrop(224, (0.8, 1))
+
+transform_train = v2.Compose([
+    lambda img: img.convert('RGB'),
+    v2.PILToTensor(),
+    v2.ToDtype(torch.float32, True),
+    v2.RandomHorizontalFlip(),
+    v2.RandomRotation(5),
+    v2.RandomChoice([pad, rand_crop]),
+    v2.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+])
+
+transform_test = v2.Compose([
+    lambda img: img.convert('RGB'),
+    v2.PILToTensor(),
+    v2.ToDtype(torch.float32, True),
+    pad,
+    v2.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+])
+
+
+def show_preds(y: Tensor, preds: np.ndarray, tag_names, width=2):
     tag_names = np.array(tag_names)
-
-    fig, axis = plt.subplots(1, len(preds), figsize=(width * len(X), width), constrained_layout=True)
-    axis: list[Axes]
-
-    for ax, img in zip(axis, X):
-        ax.imshow(img)
-        ax.axis(False)
-
     idx_sorted = preds.argsort()[:, ::-1].copy()
 
     preds = [
@@ -94,5 +115,16 @@ def visualize(X: Tensor, y: Tensor, preds: np.ndarray, tag_names, width=2):
         for row, idx_cols in enumerate(idx_sorted)
     ]
 
-    plt.show()
     print(f'\n\n'.join(preds))
+
+def show_imgs(X: list[Tensor], width=2):
+    X = [x.permute(1, 2, 0) for x in X]
+
+    fig, axis = plt.subplots(1, len(X), figsize=(width * len(X), width), constrained_layout=True)
+    axis: list[Axes]
+
+    for ax, img in zip(axis, X):
+        ax.imshow(img)
+        ax.axis(False)
+
+    plt.show()
