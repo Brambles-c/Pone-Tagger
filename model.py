@@ -11,13 +11,16 @@ class Tagger(nn.Module):
         super().__init__()
         self.backbone_freeze = True
 
-        self.backbone: nn.Module = AutoModel.from_pretrained('facebook/dinov2-base', token=token)
+        self.backbone: nn.Module = AutoModel.from_pretrained('facebook/dinov3-vits16-pretrain-lvd1689m', token=token)
         self.backbone.requires_grad_(False)
         self.classifier = nn.Sequential(
-            nn.Linear(768, 256),
+            nn.Linear(384, 256),
+            nn.LayerNorm(256),
             nn.GELU(),
-            nn.Dropout(0.3),
-            nn.Linear(256, 30)
+            nn.Linear(256, 128),
+            nn.LayerNorm(128),
+            nn.GELU(),
+            nn.Linear(128, 35)
         )
 
         for layer in self.classifier:
@@ -42,5 +45,5 @@ class Tagger(nn.Module):
     def freeze_backbone(self, mode=True):
         self.backbone_freeze = mode
 
-        for layer in self.backbone.encoder.layer[-4:]:
+        for layer in self.backbone.model.layer[-4:]:
             layer.requires_grad_(not mode)
